@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# uv
+.python-version
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Testing / tooling
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# IDEs
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# CadQuery / CQ-editor
+*.step
+*.stp
+*.iges
+*.igs
+*.brep
+*.stl
+*.3mf
+*.amf
+
+# CQ-editor session/cache files
+*.autosave
+*.bak
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Logs
+*.log
