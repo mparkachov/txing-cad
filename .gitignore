@@ -41,6 +41,9 @@ Thumbs.db
 *.3mf
 *.amf
 
+# Generated gcode
+*.gcode
+
 # CQ-editor session/cache files
 *.autosave
 *.bak
