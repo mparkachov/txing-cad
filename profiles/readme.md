@@ -176,9 +176,53 @@ load: `perimeters` went from `3` to `2`. That reduced path count and likely
 reduced ABS shrink stress in the long rails. The successful result also shows
 that speed alone was not the failure trigger.
 
-## Current confirmed baseline
+14. Two perimeters with one rectilinear bottom solid layer:
+   - same as step 13
+   - `bottom_solid_layers = 1`
+   - `bottom_fill_pattern = rectilinear`
+   - `top_solid_layers = 0`
 
-The current `profiles/up3d.ini` successful print uses:
+Step 14 failed: the printer stopped printing again. This isolates the failure
+to the added bottom solid-fill paths, not to travel speed, upload, model size,
+or the legacy G-code post-processor. Do not use rectilinear
+`bottom_solid_layers = 1` as a safe next step for this part.
+
+15. Two perimeters with one concentric bottom solid layer:
+   - same as step 13
+   - `bottom_solid_layers = 1`
+   - `bottom_fill_pattern = concentric`
+   - `top_solid_layers = 0`
+
+Step 15 completed successfully. This confirms that a bottom solid layer is
+possible, but the path shape matters. Concentric bottom fill stayed reliable
+where rectilinear bottom fill made the printer stop.
+
+16. Two perimeters with three concentric bottom solid layers:
+   - same as step 15
+   - `first_layer_height = 0.2`
+   - `layer_height = 0.3`
+   - `bottom_solid_layers = 3`
+   - `bottom_fill_pattern = concentric`
+   - `top_solid_layers = 0`
+
+Step 16 completed successfully. This confirmed a thicker concentric bottom
+skin. Nominal bottom thickness was `0.8 mm`: first layer `0.2 mm` plus two
+additional `0.3 mm` bottom solid layers.
+
+17. Two perimeters with 0.9 mm concentric bottom and top:
+   - `first_layer_height = 0.3`
+   - `layer_height = 0.3`
+   - `bottom_solid_layers = 3`
+   - `bottom_fill_pattern = concentric`
+   - `top_solid_layers = 3`
+   - `top_fill_pattern = concentric`
+
+Step 17 failed during the first top solid layer. The 0.9 mm bottom printed fine,
+so the failure is isolated to the added top solid paths.
+
+## Last confirmed bottom profile
+
+The last successful bottom profile uses:
 
 ```ini
 perimeter_generator = classic
@@ -207,13 +251,15 @@ infill_anchor = 600%
 infill_anchor_max = 50
 
 top_solid_layers = 0
-bottom_solid_layers = 0
+bottom_solid_layers = 3
+bottom_fill_pattern = concentric
 
 cooling = 0
 max_fan_speed = 0
 ```
 
-The current speed settings are intentionally no longer capped at `30 mm/s`:
+These speed settings remain unchanged in the active test and are intentionally
+no longer capped at `30 mm/s`:
 
 ```ini
 first_layer_speed = 20
@@ -236,10 +282,76 @@ F90, F480, F600, F1200, F1500, F1800, F2100, F3000, F4800
 ```
 
 The successful print confirms that `F3000` positioning moves are acceptable on
-this printer for this part. The current profile also emits `F4800` travel moves
+this printer for this part. The profile also emits `F4800` travel moves
 from `travel_speed = 80`; those did not cause the observed historical stall in
 this successful test. Continue treating path complexity and internal shrink
 stress as higher-risk than travel speed alone.
+
+## Last confirmed thickness
+
+The current slicer line widths are:
+
+```ini
+external_perimeter_extrusion_width = 0.4
+perimeter_extrusion_width = 0.4
+solid_infill_extrusion_width = 0.4
+first_layer_extrusion_width = 0.4
+```
+
+With `perimeters = 2`, each outside wall is nominally about `0.8 mm` thick.
+With `bottom_solid_layers = 3` and `first_layer_height = 0.3`, the solid bottom
+skin is nominally `0.9 mm` thick.
+
+Generated metrics for the current 0.9 mm bottom, top-disabled file:
+
+```text
+estimated time: 17m02s
+G-code size: 115 KB
+G1 count: 3465
+first Z layers: 0.3, 0.6, 0.9
+```
+
+The 0.9 mm bottom already printed fine in the failed top-layer test. Keep this
+bottom structure and avoid top solid layers until a lower-risk top strategy is
+chosen.
+
+## Failed top test
+
+```ini
+first_layer_height = 0.3
+layer_height = 0.3
+bottom_solid_layers = 3
+bottom_fill_pattern = concentric
+top_solid_layers = 3
+top_fill_pattern = concentric
+```
+
+Nominal bottom thickness is `0.9 mm`: three `0.3 mm` bottom solid layers.
+Nominal top thickness is also `0.9 mm`: three `0.3 mm` top solid layers. The
+start prime Z still follows `[first_layer_height]`, now resolving to `Z0.3`.
+
+Generated metrics for the successful 0.8 mm bottom test were:
+
+```text
+estimated time: 17m26s
+G-code size: 118 KB
+G1 count: 3572
+first Z layers: 0.2, 0.5, 0.8
+```
+
+Generated metrics for this active 0.9 mm bottom/top test:
+
+```text
+estimated time: 19m01s
+G-code size: 122 KB
+G1 count: 3688
+first Z layers: 0.3, 0.6, 0.9
+top fill pattern: concentric
+```
+
+This test failed during the first top solid layer. The print reached the top
+section, so the added top solid paths are the failure trigger to isolate next.
+Do not treat `top_solid_layers = 3` as safe for this part.
 
 ## Start G-code note
 
@@ -277,14 +389,19 @@ Approximate transcode metrics observed during tuning:
 | 3 perimeters + 15% gyroid infill, `gcode_resolution = 0.2`, `layer_height = 0.25` | 28m41s | 118 KB | 195 KB | 9738 | warped / layer lines visible |
 | 15% gyroid, layer 0.25, 260 C, 1.05 flow, softer infill connection | 28m35s | 117 KB | 192 KB | 9559 | worse deformation |
 | 2 perimeters + 15% gyroid infill, faster travel, direct Prusa G-code | 14m59s | 120 KB | not measured | not measured | success |
+| 2 perimeters + 15% gyroid + 1 rectilinear bottom layer | 15m54s | 138 KB | not measured | not measured | failed, printer stopped |
+| 2 perimeters + 15% gyroid + 1 concentric bottom layer | 15m50s | 118 KB | not measured | not measured | success |
+| 2 perimeters + 15% gyroid + 3 concentric bottom layers | 17m02s | 115 KB | not measured | not measured | success, bottom confirmed |
+| 2 perimeters + 15% gyroid + 3 concentric bottom + 3 concentric top layers | 19m01s | 122 KB | not measured | not measured | failed during first top layer |
 | 3 perimeters + 15% rectilinear infill | not transcoded | 111 KB | not measured | not measured | pending |
 
 All successful tuned profiles had:
 
 - `E-only G1 = 0`
 - no extrusion drops/retract-like E decreases in generated print moves
-- no top/bottom solid fill or gap-fill through the current two-perimeter 15%
-  Gyroid baseline
+- no `gap_fill_enabled`
+- no top solid layers; concentric bottom solid layers are now proven, while
+  top solid layers are not
 
 ## Subtle-path risk settings
 
@@ -312,8 +429,10 @@ a time:
   a specific wall problem appears; both can add unexpected local paths.
 - `thin_walls`: already successful as-is, but treat it as a risk setting if
   narrow geometry starts causing unstable paths.
-- `top_solid_layers` and `bottom_solid_layers`: test separately because solid
-  fill adds dense rectilinear passes on narrow rails.
+- `top_solid_layers` and `bottom_solid_layers`: treat solid layers as high risk.
+  A single rectilinear bottom layer caused the printer to stop on the otherwise
+  successful two-perimeter baseline. Concentric bottom layers work; concentric
+  top layers caused a stop during the first top layer.
 
 ## Top and bottom strategy
 
@@ -330,14 +449,13 @@ Earlier dry-run metrics for the three-perimeter 15% coarse Gyroid test at
 
 Recommended order:
 
-1. Keep the current two-perimeter 15% Gyroid profile as the baseline.
-2. Then test `bottom_solid_layers = 1`, `top_solid_layers = 0` only if the
-   baseline stays flat. This improves bed contact and bottom continuity without
-   testing top bridging yet.
-3. If that succeeds and a closed top is needed, test
-   `bottom_solid_layers = 1`, `top_solid_layers = 1`.
-4. Use `top_solid_layers = 2` only if one top layer looks too open. With the
-   current `layer_height = 0.3`, two top layers give about 0.6 mm of solid cap.
+1. Keep the current two-perimeter 15% Gyroid profile with three concentric
+   bottom layers as the baseline.
+2. Avoid rectilinear `bottom_solid_layers = 1`; it caused a printer stop.
+3. Keep `bottom_solid_layers = 3` with `bottom_fill_pattern = concentric` as the
+   working bottom strategy.
+4. Do not use three top solid layers; that failed during the first top layer.
+   If a closed top is needed, test a lower-risk top strategy separately.
 5. Keep `gap_fill_enabled = 0` throughout these tests.
 
 ## Suggested next tuning order
@@ -348,13 +466,16 @@ printing.
 
 Recommended next experiments:
 
-1. Keep the current two-perimeter 15% Gyroid profile as the known-good baseline.
-2. If it remains flat, proceed to `bottom_solid_layers = 1`.
+1. Keep the current two-perimeter 15% Gyroid profile with concentric bottom as
+   the known-good baseline.
+2. Do not proceed with rectilinear `bottom_solid_layers = 1`; it is a confirmed
+   failure case.
 3. If a later change bends the part again, treat that change as adding internal
    shrink stress or path complexity; revert to this baseline before testing the
    next variable.
-4. If it bonds well and shape is acceptable, test `top_solid_layers = 1` only if
-   a closed top is needed.
+4. If a closed top is needed, do not jump straight to multiple top solid layers.
+   Test a lower-risk top strategy separately, starting from one layer or a
+   model-side cap.
 5. Test `gap_fill_enabled = 1` last, because gap-fill tends to create many
    short segments.
 
