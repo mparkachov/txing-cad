@@ -1,0 +1,317 @@
+# UP3D / UP Mini Profile Notes
+
+This document records findings from tuning PrusaSlicer output for an UP Mini
+style workflow:
+
+```text
+CadQuery -> STL -> PrusaSlicer CLI -> G-code -> up3dtranscode -> up3dload
+```
+
+The tests were done with small ABS PCB edge-post parts on 2026-06-06 and
+2026-06-07. These are practical findings for this printer and workflow, not
+general PrusaSlicer advice.
+
+## 1. Printer Findings
+
+### Main failure mode
+
+The repeated bad failure is not a normal visible print defect. The printer
+accepts the uploaded file, starts printing, then stops moving/extruding while it
+still looks active or blinking. Upload completion alone is therefore not enough
+to prove the generated toolpath is safe.
+
+The same CadQuery -> STL -> PrusaSlicer -> UP3D pipeline printed simple models
+successfully. The failures are therefore tied to the generated path style and
+the physical part behavior, not to CAD export or upload in general.
+
+### What clearly worked
+
+- Simple perimeter-only parts worked reliably.
+- `F3000` positioning moves are acceptable; speed alone is not the main
+  problem for this part.
+- Two perimeters worked better than three perimeters once infill was enabled.
+- `15%` Gyroid infill is enough for this part visually and mechanically as a
+  starting point.
+- Gyroid can work when PrusaSlicer output is coarse enough:
+  `gcode_resolution = 0.2`.
+- Three concentric bottom layers printed successfully at `0.3 mm` layer height,
+  giving a nominal `0.9 mm` bottom.
+- One normal-width concentric top layer printed successfully and closed the
+  top, but the top is still too thin.
+
+### What clearly did not work
+
+- Fine Gyroid segmentation failed. `gcode_resolution = 0.0125` hung near
+  about `1 mm` printed height, while `gcode_resolution = 0.2` worked.
+- Rectilinear solid bottom fill failed. Adding one rectilinear bottom solid
+  layer made the printer stop on an otherwise working profile.
+- Rectilinear-style top fill failed. The tested setting was
+  `top_fill_pattern = alignedrectilinear`; it stopped in the middle of printing
+  the top layer. Dry-run metrics for `rectilinear`, `monotonic`, and
+  `alignedrectilinear` are very similar, so this whole straight-line top-fill
+  family should be treated as high risk.
+- Multiple top solid layers failed. `top_solid_layers = 3` stopped during the
+  first top layer. A dry run of `top_solid_layers = 2` also introduced
+  `Bridge infill`, which resembles the failed multi-layer top behavior.
+- Wider top infill lines did not help. `top_infill_extrusion_width = 0.6`
+  finished according to the printer, but did not produce a usable visible top.
+- Extra perimeters did not close the top. `perimeters = 5` made the walls much
+  thicker but still left no proper cap.
+- Hotter extrusion plus extra flow made deformation worse in one test:
+  `260 C`, `extrusion_multiplier = 1.05`, reduced infill anchoring, and
+  `layer_height = 0.25` produced a worse warped part.
+- Legacy/old-school G-code filtering did not solve the stopping problem. The
+  current pipeline uses direct PrusaSlicer output again.
+
+### Inference
+
+There are two separate problems:
+
+1. Path compatibility problems, where the printer/transcoder workflow stalls on
+   certain generated motion patterns.
+2. Physical ABS stress problems, where added infill or heavier shells pull the
+   long rails into a bend or cause poor layer bonding.
+
+The strongest path-pattern evidence is now rectilinear solid fill:
+
+- rectilinear bottom solid fill stopped the printer;
+- rectilinear-style top fill stopped the printer;
+- concentric bottom fill worked;
+- one concentric top fill worked, although too thin.
+
+This suggests the printer is more sensitive to the motion pattern and local path
+density than to print speed alone.
+
+### Restarting the research
+
+If restarting from scratch or trying a different slicer, start from this shape
+of output:
+
+- absolute extrusion (`M82`);
+- no E-only printable extrusion moves;
+- no retracts at first;
+- no gap fill at first;
+- no arcs at first;
+- coarse curve segmentation;
+- two perimeters;
+- low-density internal infill;
+- concentric solid bottom;
+- avoid rectilinear solid top/bottom skins until proven safe.
+
+Change one setting at a time and record the physical result, not just the
+generated time or file size.
+
+## 2. Prusa Settings Related To The Findings
+
+### Current recommended baseline
+
+The active profile should be kept near this known-good closed-top compromise:
+
+```ini
+perimeter_generator = classic
+arc_fitting = disabled
+use_relative_e_distances = 0
+retract_length = 0
+gap_fill_enabled = 0
+ensure_vertical_shell_thickness = disabled
+extra_perimeters = 0
+extra_perimeters_on_overhangs = 0
+solid_infill_below_area = 0
+
+first_layer_height = 0.3
+layer_height = 0.3
+gcode_resolution = 0.2
+
+perimeters = 2
+fill_density = 15%
+fill_pattern = gyroid
+
+bottom_solid_layers = 3
+bottom_fill_pattern = concentric
+
+top_solid_layers = 1
+top_fill_pattern = concentric
+top_infill_extrusion_width = 0.4
+```
+
+This profile has a working bottom and a closed top. The known weakness is that
+the top is only one `0.3 mm` layer.
+
+### Speed settings
+
+The current speed settings are not suspected as the primary failure trigger:
+
+```ini
+first_layer_speed = 20
+perimeter_speed = 30
+external_perimeter_speed = 30
+small_perimeter_speed = 30
+infill_speed = 35
+solid_infill_speed = 30
+top_solid_infill_speed = 30
+bridge_speed = 25
+travel_speed = 80
+max_print_speed = 80
+```
+
+Successful generated files included feedrates up to `F3000`, and later
+successful files also included `F4800` travel moves. Keep these speeds stable
+while testing path-style changes.
+
+### Bottom strategy
+
+Recommended:
+
+```ini
+bottom_solid_layers = 3
+bottom_fill_pattern = concentric
+first_layer_height = 0.3
+layer_height = 0.3
+```
+
+This gives a nominal `0.9 mm` bottom and has printed successfully.
+
+Avoid:
+
+```ini
+bottom_fill_pattern = rectilinear
+```
+
+One rectilinear bottom solid layer caused the printer to stop.
+
+### Top strategy
+
+The top is not fully solved.
+
+Recommended current compromise:
+
+```ini
+top_solid_layers = 1
+top_fill_pattern = concentric
+top_infill_extrusion_width = 0.4
+```
+
+This closes the top and avoids `Bridge infill`, but it is thin.
+
+Avoid for now:
+
+```ini
+top_solid_layers = 2
+top_solid_layers = 3
+top_fill_pattern = rectilinear
+top_fill_pattern = alignedrectilinear
+top_infill_extrusion_width = 0.6
+```
+
+Reasons:
+
+- multiple top layers add risky solid/bridge closure behavior;
+- aligned rectilinear top fill physically stopped mid top layer;
+- wider top lines reduced useful top coverage.
+
+If a thicker top is required, the next research should not be another plain
+Prusa top-fill pattern swap. Better candidates are a model-side top feature
+that slices as perimeters, or a Prusa modifier/3MF strategy that changes the
+upper region without using normal top solid infill.
+
+### Infill strategy
+
+Recommended:
+
+```ini
+fill_density = 15%
+fill_pattern = gyroid
+gcode_resolution = 0.2
+```
+
+Notes:
+
+- `5%` rectilinear printed but was too light.
+- `20%` rectilinear printed but is heavier than needed.
+- `20%` Gyroid failed with fine segmentation, then worked with
+  `gcode_resolution = 0.2`.
+- `15%` Gyroid is enough for this part and should remain the default until a
+  strength requirement proves otherwise.
+
+### Path complexity settings
+
+Keep these conservative while tuning:
+
+```ini
+gap_fill_enabled = 0
+retract_length = 0
+solid_infill_below_area = 0
+perimeter_generator = classic
+ensure_vertical_shell_thickness = disabled
+extra_perimeters = 0
+extra_perimeters_on_overhangs = 0
+```
+
+`solid_infill_below_area = 0` is important because Prusa otherwise inserts
+extra small solid infill patches inside the rails. Disabling it removed repeated
+non-bottom `Solid infill` while preserving the confirmed bottom layers.
+
+### Start G-code note
+
+The start prime was changed to avoid an E-only prime command:
+
+```gcode
+G1 X85 E9.0 F480
+G92 E0
+G1 X86 E0.45 F90
+G4 P250
+G92 E0
+```
+
+Keep extrusion paired with XY motion unless a later test proves E-only moves are
+safe in this workflow.
+
+## 3. Existing Results Archive
+
+Recent UMC metrics were not available after the temporary UP3D tool path was
+lost, so later rows use G-code metrics only.
+
+| ID | Profile change | Generated metrics | Physical result |
+| --- | --- | --- | --- |
+| 1 | `perimeters = 1`, no infill/top/bottom, slow speeds | 23m39s, 11 KB G-code, 16 KB UMC, 580 MoveL | Success |
+| 2 | `perimeters = 2`, no infill/top/bottom | 37m16s, 23 KB G-code, 28 KB UMC, 1184 MoveL | Success |
+| 3 | Two perimeters, perimeter speed 15, travel 30 | 27m45s, 23 KB G-code, 29 KB UMC, 1268 MoveL | Success |
+| 4 | Two perimeters, faster shell speeds | 19m20s, 24 KB G-code, 50 KB UMC, 2337 MoveL | Success |
+| 5 | Fast speed profile: first layer 20, perimeters 30, infill/solid 35, travel 100 | 17m24s, 24 KB G-code, 52 KB UMC, 2403 MoveL | Success |
+| 6 | `perimeters = 3`, no infill/top/bottom | 21m58s, 35 KB G-code, 74 KB UMC, 3553 MoveL | Success |
+| 7 | 3 perimeters, `5%` rectilinear infill | 24m25s, 63 KB G-code, 113 KB UMC, 5569 MoveL | Success, too light |
+| 8 | 3 perimeters, `20%` rectilinear infill | 25m56s, 135 KB G-code, 209 KB UMC, 10442 MoveL | Success |
+| 9 | 3 perimeters, `20%` Gyroid, `gcode_resolution = 0.0125` | 25m22s, 287 KB G-code, 318 KB UMC, 16050 MoveL | Failed near 1 mm |
+| 10 | 3 perimeters, `20%` Gyroid, `gcode_resolution = 0.2` | 25m16s, 116 KB G-code, 205 KB UMC, 10260 MoveL | Success |
+| 11 | 3 perimeters, `15%` Gyroid, `gcode_resolution = 0.2`, `layer_height = 0.3` | 25m36s, 92 KB G-code, 160 KB UMC, 7956 MoveL | Printed but mechanically bad: bent, weak layers |
+| 12 | 3 perimeters, `15%` Gyroid, `layer_height = 0.25` | 28m41s, 118 KB G-code, 195 KB UMC, 9738 MoveL | Warped, visible layers |
+| 13 | Hotter/extra-flow bonding attempt: `260 C`, `1.05` flow, softer infill anchor | 28m35s, 117 KB G-code, 192 KB UMC, 9559 MoveL | Worse deformation |
+| 14 | 2 perimeters, `15%` Gyroid, direct Prusa G-code, no top/bottom | 14m59s, 120 KB G-code | Success |
+| 15 | Same baseline plus one rectilinear bottom layer | 15m54s, 138 KB G-code | Failed, printer stopped |
+| 16 | Same baseline plus one concentric bottom layer | 15m50s, 118 KB G-code | Success |
+| 17 | Same baseline plus three concentric bottom layers | 17m02s, 115 KB G-code, G1=3465 | Success, bottom confirmed |
+| 18 | 3 concentric bottom layers plus 3 concentric top layers | 19m01s, 122 KB G-code, G1=3688 | Failed during first top layer |
+| 19 | 3 concentric bottom layers plus 1 concentric top layer | 17m36s, 114 KB G-code, G1=3445 | Success, top closed but too thin |
+| 20 | Same as 19 plus `solid_infill_below_area = 0` | 17m30s, 110 KB G-code, G1=3329; `Solid infill` only at Z0.3/0.6/0.9 | Success, top closed but too thin |
+| 21 | One concentric top layer with `top_infill_extrusion_width = 0.6` | 17m13s, 113 KB G-code, G1=3389 | Printer finished, but no usable visible top |
+| 22 | `perimeters = 5`, no top solid layer | 25m46s, 74 KB G-code, G1=2161 | Worse: thick walls, no closed top |
+| 23 | One aligned-rectilinear top layer, `solid_infill_below_area = 0` | 17m36s, G1=3992, `Top solid infill`=763, `Bridge infill`=0 | Failed mid top layer |
+
+### Top pattern dry-run comparison
+
+These were generated with `top_solid_layers = 1` and were used to choose the
+failed rectilinear-style test:
+
+| `top_fill_pattern` | Total G1 | Top solid infill G1 | Bridge infill G1 |
+| --- | ---: | ---: | ---: |
+| `concentric` | 3329 | 100 | 0 |
+| `rectilinear` | 3992 | 763 | 0 |
+| `monotonic` | 3992 | 763 | 0 |
+| `alignedrectilinear` | 3992 | 763 | 0 |
+| `monotoniclines` | 4366 | 1137 | 0 |
+| `archimedeanchords` | 4128 | 898 | 0 |
+| `octagramspiral` | 4556 | 1326 | 0 |
+| `hilbertcurve` | 6568 | 3338 | 0 |
+
+The physical aligned-rectilinear failure makes the straight-line top-fill group
+high risk, even though it did not introduce `Bridge infill`.
