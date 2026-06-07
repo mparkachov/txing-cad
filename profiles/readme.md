@@ -220,6 +220,58 @@ additional `0.3 mm` bottom solid layers.
 Step 17 failed during the first top solid layer. The 0.9 mm bottom printed fine,
 so the failure is isolated to the added top solid paths.
 
+18. Two perimeters with 0.9 mm concentric bottom and one concentric top layer:
+   - `bottom_solid_layers = 3`
+   - `bottom_fill_pattern = concentric`
+   - `top_solid_layers = 1`
+   - `top_fill_pattern = concentric`
+
+Step 18 completed successfully. The top printed, but it was visibly too thin.
+Nominal top thickness was `0.3 mm`.
+
+19. One concentric top layer with wider top extrusion:
+   - same as step 18
+   - `top_solid_layers = 1`
+   - `top_fill_pattern = concentric`
+   - `top_infill_extrusion_width = 0.6`
+
+Step 19 completed according to the printer, but produced no usable visible top.
+This means slicer-generated top infill is not a reliable way to close this
+geometry.
+
+Generated metrics for this active wider-top-line test:
+
+```text
+estimated time: 17m13s
+G-code size: 113 KB
+G1 count: 3389
+top infill extrusion width: 0.60 mm
+top solid infill appears at: Z2.1 and Z6.9
+```
+
+This produces fewer top solid moves than the successful thin-top print because
+the wider line spacing reduces the number of concentric passes.
+
+20. Perimeter-filled top test:
+   - `perimeters = 5`
+   - `top_solid_layers = 0`
+   - `bottom_solid_layers = 3`
+   - `bottom_fill_pattern = concentric`
+
+Step 20 was worse: it made the perimeter much thicker but still did not close
+the top. Extra perimeters do not create a cap for this geometry; they only
+consume the rail width with wall paths.
+
+Generated metrics for this active perimeter-filled top test:
+
+```text
+estimated time: 25m46s
+G-code size: 74 KB
+G1 count: 2161
+top/bridge infill: none
+final layer path mix: External perimeter=25, Perimeter=80, Internal infill=4
+```
+
 ## Last confirmed bottom profile
 
 The last successful bottom profile uses:
@@ -315,6 +367,61 @@ The 0.9 mm bottom already printed fine in the failed top-layer test. Keep this
 bottom structure and avoid top solid layers until a lower-risk top strategy is
 chosen.
 
+## Current restored top profile
+
+The current profile returns to the only physically successful closed-top slicer
+configuration:
+
+```ini
+first_layer_height = 0.3
+layer_height = 0.3
+perimeters = 2
+bottom_solid_layers = 3
+bottom_fill_pattern = concentric
+top_solid_layers = 1
+top_fill_pattern = concentric
+top_infill_extrusion_width = 0.4
+```
+
+This is the successful Step 18 configuration. It closes the top because Prusa
+generates enough normal-width concentric `Top solid infill` paths while avoiding
+the bridge/top-closure sequence that appeared with multiple top layers.
+
+Generated metrics for the successful one-top-layer test were:
+
+```text
+estimated time: 17m36s
+G-code size: 114 KB
+G1 count: 3445
+top solid infill appears at: Z2.1 and Z6.9
+```
+
+Unlike the failed three-top-layer test, this file does not generate the extra
+`Bridge infill` / intermediate top closure sequence near the final layers.
+
+A two-layer top was evaluated but not selected as the next print: it generated
+`Bridge infill` near the upper closure, which is close to the failed
+three-layer top behavior.
+
+The wider top-line test did not produce a usable visible top, so do not continue
+in the direction of larger top infill extrusion width.
+
+Why Step 18 worked:
+
+- `perimeters = 2` leaves enough of the rail width for Prusa to generate top
+  solid infill across the top surface.
+- `top_solid_layers = 1` avoids the extra `Bridge infill` and intermediate
+  solid closure layers that made the three-layer top fail.
+- `top_infill_extrusion_width = 0.4` generated enough concentric top passes:
+  `63` top-solid moves on the final layer, with `48` extrusion moves.
+
+Why the later attempts failed:
+
+- `top_infill_extrusion_width = 0.6` reduced the number of top passes, so the
+  printer finished but no usable visible top was formed.
+- `perimeters = 5` generated no top/bridge infill at all. It thickened the
+  walls but did not cap the open top.
+
 ## Failed top test
 
 ```ini
@@ -392,7 +499,10 @@ Approximate transcode metrics observed during tuning:
 | 2 perimeters + 15% gyroid + 1 rectilinear bottom layer | 15m54s | 138 KB | not measured | not measured | failed, printer stopped |
 | 2 perimeters + 15% gyroid + 1 concentric bottom layer | 15m50s | 118 KB | not measured | not measured | success |
 | 2 perimeters + 15% gyroid + 3 concentric bottom layers | 17m02s | 115 KB | not measured | not measured | success, bottom confirmed |
+| 2 perimeters + 15% gyroid + 3 concentric bottom + 1 concentric top layer | 17m36s | 114 KB | not measured | not measured | success, top too thin |
+| 2 perimeters + 15% gyroid + 3 concentric bottom + 1 wide concentric top layer | 17m13s | 113 KB | not measured | not measured | finished, no usable visible top |
 | 2 perimeters + 15% gyroid + 3 concentric bottom + 3 concentric top layers | 19m01s | 122 KB | not measured | not measured | failed during first top layer |
+| 5 perimeters + 15% gyroid + 3 concentric bottom + no top solid layer | 25m46s | 74 KB | not measured | not measured | worse, thick walls and no closed top |
 | 3 perimeters + 15% rectilinear infill | not transcoded | 111 KB | not measured | not measured | pending |
 
 All successful tuned profiles had:
@@ -400,8 +510,10 @@ All successful tuned profiles had:
 - `E-only G1 = 0`
 - no extrusion drops/retract-like E decreases in generated print moves
 - no `gap_fill_enabled`
-- no top solid layers; concentric bottom solid layers are now proven, while
-  top solid layers are not
+- concentric bottom solid layers are proven
+- only the single normal-width concentric top layer produced a visible closed
+  top, but it was too thin; wider top lines, multiple top layers, and perimeter
+  overfill did not solve the top
 
 ## Subtle-path risk settings
 
@@ -474,8 +586,7 @@ Recommended next experiments:
    shrink stress or path complexity; revert to this baseline before testing the
    next variable.
 4. If a closed top is needed, do not jump straight to multiple top solid layers.
-   Test a lower-risk top strategy separately, starting from one layer or a
-   model-side cap.
+   The active lower-risk slicer test is one concentric top layer.
 5. Test `gap_fill_enabled = 1` last, because gap-fill tends to create many
    short segments.
 
