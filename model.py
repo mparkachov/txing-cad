@@ -1,18 +1,20 @@
 import cadquery as cq
 
+from components import make_pcb_edge_post
+
 # Parameters
-square_size = 2.0
-height = 1.0
+output_filename = "model.stl"
+
+# Components
+components = [
+    make_pcb_edge_post(),
+]
 
 # Geometry
-result = (
-    cq.Workplane("XY")
-    .rect(square_size, square_size)
-    .extrude(height)
-)
+result = cq.Compound.makeCompound(components)
 
 # Export
-cq.exporters.export(result, "model.stl")
+cq.exporters.export(result, output_filename)
 
 # CQ-editor compatibility
 try:

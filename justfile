@@ -23,7 +23,7 @@ print:
     ssh {{PRINTER}} "./print.sh"
 
 # Full pipeline
-all: upload print
+all: stl gcode upload print
 
 # Open CQ-editor
 edit:
