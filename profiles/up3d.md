@@ -40,6 +40,8 @@ the physical part behavior, not to CAD export or upload in general.
   top, but the top is still too thin.
 - Multiple top layers can work when perimeter-to-infill overlap is reduced.
 - top_solid_layers = 2 printed successfully with: infill_overlap = 0%, 5%, and 10%.
+- top_solid_layers = 3 printed successfully on the simplified combined PCB edge
+  and camera mount with concentric top fill and 10% overlap.
 - Reduced overlap appears to be more important than the number of top layers itself
 
 ### What clearly did not work
@@ -53,9 +55,10 @@ the physical part behavior, not to CAD export or upload in general.
   the top layer. Dry-run metrics for `rectilinear`, `monotonic`, and
   `alignedrectilinear` are very similar, so this whole straight-line top-fill
   family should be treated as high risk.
-- Multiple top solid layers failed. `top_solid_layers = 3` stopped during the
-  first top layer. A dry run of `top_solid_layers = 2` also introduced
-  `Bridge infill`, which resembles the failed multi-layer top behavior.
+- Earlier testing of `top_solid_layers = 3` stopped during the first top layer
+  on an older part/profile combination. This is historical context, not current
+  guidance, because the simplified combined camera mount later printed
+  successfully with three concentric top layers.
 - Wider top infill lines did not help. `top_infill_extrusion_width = 0.6`
   finished according to the printer, but did not produce a usable visible top.
 - Extra perimeters did not close the top. `perimeters = 5` made the walls much
@@ -145,13 +148,20 @@ infill_overlap = 10%
 bottom_solid_layers = 3
 bottom_fill_pattern = concentric
 
-top_solid_layers = 1
+top_solid_layers = 3
 top_fill_pattern = concentric
 top_infill_extrusion_width = 0.4
+
+skirts = 0
+min_skirt_length = 80
+skirt_distance = 3
+seam_position = aligned
 ```
 
-This profile has a working bottom and a closed top. The known weakness is that
-the top is only one `0.3 mm` layer.
+This profile has a working bottom and a tested three-layer concentric top for
+the simplified combined PCB edge and camera mount. No skirt is used; the recent
+print showed the earlier stop was tied to small model geometry, not to the
+prime-to-part startup path.
 
 New testing indicates that overlap should be limited to approximately 10% or less. Successful prints were obtained at 0%, 5%, and 10%, while 15% caused a printer stop. Until contradictory evidence appears, 10% should be treated as the practical upper limit for a general-purpose profile.
 
@@ -201,23 +211,20 @@ Additional testing showed that rectilinear bottom fill continued to fail even af
 
 ### Top strategy
 
-The top is partially solved.
-
-Recommended current compromise:
+Recommended current setting:
 
 ```ini
-top_solid_layers = 1
+top_solid_layers = 3
 top_fill_pattern = concentric
 top_infill_extrusion_width = 0.4
 ```
 
-This closes the top and avoids `Bridge infill`, but it is thin.
+This printed successfully on the simplified combined PCB edge and camera mount.
+Keep `top_fill_pattern = concentric`; rectilinear-style top fill remains risky.
 
 Avoid for now:
 
 ```ini
-top_solid_layers = 2
-top_solid_layers = 3
 top_fill_pattern = rectilinear
 top_fill_pattern = alignedrectilinear
 top_infill_extrusion_width = 0.6
@@ -225,24 +232,18 @@ top_infill_extrusion_width = 0.6
 
 Reasons:
 
-- multiple top layers add risky solid/bridge closure behavior;
 - aligned rectilinear top fill physically stopped mid top layer;
 - wider top lines reduced useful top coverage.
-
-If a thicker top is required, the next research should not be another plain
-Prusa top-fill pattern swap. Better candidates are a model-side top feature
-that slices as perimeters, or a Prusa modifier/3MF strategy that changes the
-upper region without using normal top solid infill.
 
 Recent testing showed that top_solid_layers = 2 can succeed when overlap is reduced to 10% or below. The previous top-layer failures should therefore not be interpreted as proof that multiple top layers are unsupported.
 
 Current safe region:
 
-top_solid_layers = 2
+```ini
+top_solid_layers = 3
 top_fill_pattern = concentric
 infill_overlap = 10%
-
-Further testing is still required before recommending three top layers as a default.
+```
 
 ### Infill strategy
 
@@ -331,6 +332,7 @@ lost, so later rows use G-code metrics only.
 | 26 | `top_solid_layers = 2`, `infill_overlap = 10%` | — | Success |
 | 27 | `top_solid_layers = 2`, `infill_overlap = 15%` | — | Failed |
 | 28 | Rectilinear bottom fill retest after overlap investigation | — | Failed |
+| 29 | Simplified combined PCB edge and camera mount, `top_solid_layers = 3`, concentric top fill, no skirt | — | Success |
 
 ### Top pattern dry-run comparison
 

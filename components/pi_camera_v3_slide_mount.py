@@ -22,7 +22,7 @@ stop_inset_width = 5.2
 bottom_plate_depth = 7.0
 bottom_plate_thickness = 2.0
 bottom_plate_min_z = 2.0
-camera_square_body_bottom_from_lower_left = 4.0
+bottom_plate_end_extension = 2.4
 
 detent_protrusion = 0.0
 detent_length = 2.4
@@ -49,55 +49,17 @@ def _make_box(
     )
 
 
-def _make_lead_in_cut(
-    *,
-    side: int,
-    channel_half_width: float,
-    rail_lip_width: float,
-    rail_y_max: float,
-    lead_in_length: float,
-    rail_height: float,
-    cut_overlap: float,
-) -> cq.Workplane:
-    if side > 0:
-        lip_inner_x = channel_half_width - rail_lip_width
-        sidewall_inner_x = channel_half_width
-        points = (
-            (lip_inner_x - cut_overlap, rail_y_max + cut_overlap),
-            (lip_inner_x - cut_overlap, rail_y_max - lead_in_length),
-            (sidewall_inner_x + cut_overlap, rail_y_max + cut_overlap),
-        )
-    else:
-        lip_inner_x = -channel_half_width + rail_lip_width
-        sidewall_inner_x = -channel_half_width
-        points = (
-            (lip_inner_x + cut_overlap, rail_y_max + cut_overlap),
-            (lip_inner_x + cut_overlap, rail_y_max - lead_in_length),
-            (sidewall_inner_x - cut_overlap, rail_y_max + cut_overlap),
-        )
-
-    return (
-        cq.Workplane("XY")
-        .polyline(points)
-        .close()
-        .extrude(rail_height + 2 * cut_overlap)
-        .translate((0, 0, -cut_overlap))
-    )
-
-
 def _make_side_rail(
     *,
     side: int,
     channel_half_width: float,
     rail_center_y: float,
     rail_length: float,
-    rail_y_max: float,
     base_thickness: float,
     top_plate_z_min: float,
     rail_height: float,
     rail_wall_thickness: float,
     rail_lip_width: float,
-    lead_in_length: float,
     cut_overlap: float,
 ) -> cq.Workplane:
     rail_width = rail_wall_thickness + rail_lip_width
@@ -122,19 +84,6 @@ def _make_side_rail(
     )
     rail = rail.cut(channel_cut)
 
-    if lead_in_length > 0:
-        rail = rail.cut(
-            _make_lead_in_cut(
-                side=side,
-                channel_half_width=channel_half_width,
-                rail_lip_width=rail_lip_width,
-                rail_y_max=rail_y_max,
-                lead_in_length=lead_in_length,
-                rail_height=rail_height,
-                cut_overlap=cut_overlap,
-            )
-        )
-
     return rail
 
 
@@ -158,7 +107,7 @@ def make_pi_camera_v3_slide_mount(
     bottom_plate_depth: float = bottom_plate_depth,
     bottom_plate_thickness: float = bottom_plate_thickness,
     bottom_plate_min_z: float = bottom_plate_min_z,
-    camera_square_body_bottom_from_lower_left: float = camera_square_body_bottom_from_lower_left,
+    bottom_plate_end_extension: float = bottom_plate_end_extension,
     detent_protrusion: float = detent_protrusion,
     detent_length: float = detent_length,
     detent_margin_from_top: float = detent_margin_from_top,
@@ -199,10 +148,8 @@ def make_pi_camera_v3_slide_mount(
         raise ValueError("bottom_plate_thickness must be positive")
     if bottom_plate_min_z < 0:
         raise ValueError("bottom_plate_min_z must not be negative")
-    if camera_square_body_bottom_from_lower_left <= 0:
-        raise ValueError("camera_square_body_bottom_from_lower_left must be positive")
-    if camera_square_body_bottom_from_lower_left >= board_depth:
-        raise ValueError("camera_square_body_bottom_from_lower_left must be smaller than board_depth")
+    if bottom_plate_end_extension < 0:
+        raise ValueError("bottom_plate_end_extension must not be negative")
     if detent_protrusion < 0:
         raise ValueError("detent_protrusion must not be negative")
     if detent_length <= 0:
@@ -266,13 +213,13 @@ def make_pi_camera_v3_slide_mount(
         )
 
     if include_bottom_plate:
-        camera_body_bottom_y = board_y_min + camera_square_body_bottom_from_lower_left
         bottom_plate_height = rail_height - top_plate_z_min
+        effective_bottom_plate_depth = bottom_plate_depth + bottom_plate_end_extension
         bottom_plate = _make_box(
             center_x=0,
-            center_y=camera_body_bottom_y - bottom_plate_depth / 2,
+            center_y=rail_y_min - bottom_plate_end_extension + effective_bottom_plate_depth / 2,
             width=mount_outer_width,
-            depth=bottom_plate_depth,
+            depth=effective_bottom_plate_depth,
             height=bottom_plate_height,
             z_min=top_plate_z_min,
         )
@@ -287,13 +234,11 @@ def make_pi_camera_v3_slide_mount(
             channel_half_width=channel_half_width,
             rail_center_y=rail_center_y,
             rail_length=rail_length,
-            rail_y_max=rail_y_max,
             base_thickness=base_thickness,
             top_plate_z_min=top_plate_z_min,
             rail_height=rail_height,
             rail_wall_thickness=rail_wall_thickness,
             rail_lip_width=rail_lip_width,
-            lead_in_length=lead_in_length,
             cut_overlap=cut_overlap,
         )
 
