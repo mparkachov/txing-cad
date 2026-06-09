@@ -2,6 +2,7 @@ set shell := ["bash", "-cu"]
 
 MODEL := "model"
 PRINTER := "up3d"
+HEIGHT := "122.3"
 
 default:
     @just --list
@@ -18,12 +19,16 @@ gcode:
 upload:
     scp {{MODEL}}.gcode {{PRINTER}}:/tmp/
 
+# Transcode G-code to umc
+transcode:
+    ssh {{PRINTER}} "up3dtranscode mini /tmp/{{MODEL}}.gcode /tmp/{{MODEL}}.umc {{HEIGHT}}"
+
 # Trigger remote print
 print:
-    ssh {{PRINTER}} "./print.sh"
+    ssh {{PRINTER}} "up3dload /tmp/{{MODEL}}.umc"
 
 # Full pipeline
-all: stl gcode upload print
+all: stl gcode upload transcode print
 
 # Open CQ-editor
 edit:

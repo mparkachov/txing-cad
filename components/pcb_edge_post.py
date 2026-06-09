@@ -9,7 +9,7 @@ post_length = 66.5
 overall_width = 50.0
 
 height_above_pcb_top = 62.0
-pcb_thickness = 1.6
+pcb_thickness = 1.5
 pcb_clearance = 0.2
 slot_depth = 5.0
 slot_angle_degrees = 83.0
